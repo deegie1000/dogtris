@@ -194,6 +194,42 @@
   }
 
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  #mute-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(15, 52, 96, 0.8);
+    border: 1px solid #0f3460;
+    color: #e94560;
+    font-size: 18px;
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    cursor: pointer;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s, opacity 0.2s;
+  }
+  #mute-btn:hover { background: rgba(15, 52, 96, 1); }
+  #mute-btn.muted { text-decoration: line-through; opacity: 0.4; }
+
+  .lyrics-panel {
+    min-height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #lyrics-text {
+    font-size: 12px;
+    line-height: 1.6;
+    color: #e94560;
+    text-align: center;
+    font-style: italic;
+    transition: opacity 0.3s;
+  }
 </style>
 </head>
 <body>
@@ -254,12 +290,14 @@
       <kbd>&darr;</kbd> Soft drop<br>
       <kbd>&uarr;</kbd> Rotate<br>
       <kbd>Space</kbd> Hard drop<br>
-      <kbd>P</kbd> Pause
+      <kbd>P</kbd> Pause<br>
+      <kbd>M</kbd> Mute
     </div>
   </div>
 
   <div id="board-container">
     <canvas id="game-canvas"></canvas>
+    <button id="mute-btn" title="Mute (M)">&#9835;</button>
     <div id="overlay">
       <div class="logo" style="margin-bottom:10px;">
         <svg width="60" height="60" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
@@ -293,6 +331,9 @@
     <div class="panel">
       <h3>Next</h3>
       <canvas id="next-canvas"></canvas>
+    </div>
+    <div class="panel lyrics-panel">
+      <div id="lyrics-text">~ Oreo's Theme ~</div>
     </div>
   </div>
 </div>
@@ -329,6 +370,305 @@
   let dropInterval = 800;
   let lastDrop = 0;
   let animationId = null;
+
+  // --- Audio ---
+  let audioCtx = null;
+  let musicGain = null;
+  let sfxGain = null;
+  let muted = false;
+  let musicPlaying = false;
+  let melodyNoteIndex = 0;
+  let bassNoteIndex = 0;
+  let nextMelodyTime = 0;
+  let nextBassTime = 0;
+  let musicSchedulerId = null;
+  let lyricsInterval = null;
+  let currentLyricLine = 0;
+
+  const BPM = 150;
+  const BEAT_DUR = 60 / BPM;
+
+  const NOTE_FREQ = {
+    'C3':130.81,'D3':146.83,'E3':164.81,'F3':174.61,'G3':196.00,'A3':220.00,'B3':246.94,
+    'C4':261.63,'D4':293.66,'E4':329.63,'F4':349.23,'G4':392.00,'A4':440.00,'B4':493.88,
+    'C5':523.25,'D5':587.33,'E5':659.25,'F5':698.46,'G5':783.99,'A5':880.00,
+    'C6':1046.50
+  };
+
+  // "Oreo's Theme" - a bouncy chiptune about a black & white shichon
+  // [note, duration_in_beats]  (- = rest)
+  const OREO_MELODY = [
+    // Verse 1: "O-re-o, O-re-o"
+    ['C5',1],['E5',1],['G5',2],['E5',1],['G5',1],['C6',2],
+    // "Black and white shi-chon"
+    ['A5',1],['G5',1],['F5',1],['E5',1],['D5',2],['-',2],
+    // "Fluffy little puppy"
+    ['E5',1],['E5',1],['G5',1],['G5',1],['A5',1],['G5',1],['E5',2],
+    // "Always number one!"
+    ['F5',1],['E5',1],['D5',1],['E5',1],['C5',3],['-',1],
+    // Verse 2: "Loves his yummy treats"
+    ['C5',1],['E5',1],['G5',2],['E5',1],['G5',1],['C6',2],
+    // "Rolls for belly rubs"
+    ['A5',1],['G5',1],['F5',1],['E5',1],['D5',2],['-',2],
+    // "Wiggling his little tail"
+    ['E5',1],['E5',1],['G5',1],['G5',1],['A5',1],['G5',1],['E5',2],
+    // "Spreading puppy love!"
+    ['F5',1],['E5',1],['D5',1],['E5',1],['C5',3],['-',1],
+    // Bridge: "Woof woof woof woof"
+    ['G5',1],['G5',1],['G5',1],['G5',1],['A5',1],['G5',1],['E5',1],['D5',1],
+    // "Oreo wants a snack!"
+    ['C5',2],['-',1],['E5',1],['E5',1],['F5',1],['G5',1],['A5',1],
+    // "Belly rubs and head pats"
+    ['G5',1],['F5',1],['E5',2],['D5',1],['E5',1],['F5',1],['D5',1],
+    // "There's no looking back!"
+    ['C5',3],['-',1],['G5',2],['C6',2],
+  ];
+
+  const OREO_BASS = [
+    ['C3',4],['C3',4],['F3',4],['G3',4],
+    ['C3',4],['C3',4],['F3',4],['C3',4],
+    ['C3',4],['C3',4],['F3',4],['G3',4],
+    ['G3',4],['C3',4],['F3',4],['C3',4],
+  ];
+
+  const OREO_LYRICS = [
+    "~ Oreo's Theme ~",
+    "Oreo, Oreo,",
+    "Black and white shichon!",
+    "Fluffy little puppy,",
+    "Always number one!",
+    "",
+    "Loves his yummy treats,",
+    "Rolls for belly rubs,",
+    "Wiggling his little tail,",
+    "Spreading puppy love!",
+    "",
+    "Woof! Woof! Woof! Woof!",
+    "Oreo wants a snack!",
+    "Belly rubs and head pats,",
+    "There's no looking back!",
+  ];
+
+  function initAudio() {
+    if (audioCtx) return;
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    musicGain = audioCtx.createGain();
+    musicGain.gain.value = 0.12;
+    musicGain.connect(audioCtx.destination);
+    sfxGain = audioCtx.createGain();
+    sfxGain.gain.value = 0.4;
+    sfxGain.connect(audioCtx.destination);
+  }
+
+  function toggleMute() {
+    muted = !muted;
+    if (audioCtx) {
+      musicGain.gain.value = muted ? 0 : 0.12;
+      sfxGain.gain.value = muted ? 0 : 0.4;
+    }
+    const btn = document.getElementById('mute-btn');
+    if (btn) btn.classList.toggle('muted', muted);
+  }
+
+  function playBark(count) {
+    if (!audioCtx || muted) return;
+    for (let i = 0; i < count; i++) {
+      const t = audioCtx.currentTime + i * 0.15;
+      // Bark: short sawtooth frequency sweep
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      const baseFreq = 300 + Math.random() * 400;
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(baseFreq, t);
+      osc.frequency.exponentialRampToValueAtTime(baseFreq * 2.5, t + 0.04);
+      osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.6, t + 0.12);
+      gain.gain.setValueAtTime(0.5, t);
+      gain.gain.setValueAtTime(0.5, t + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.01, t + 0.18);
+      osc.connect(gain);
+      gain.connect(sfxGain);
+      osc.start(t);
+      osc.stop(t + 0.2);
+      // Noise burst for "ruff" texture
+      const bufSize = audioCtx.sampleRate * 0.08;
+      const noiseBuf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+      const noiseData = noiseBuf.getChannelData(0);
+      for (let j = 0; j < bufSize; j++) noiseData[j] = (Math.random() * 2 - 1) * 0.3;
+      const noise = audioCtx.createBufferSource();
+      noise.buffer = noiseBuf;
+      const noiseGain = audioCtx.createGain();
+      noiseGain.gain.setValueAtTime(0.3, t);
+      noiseGain.gain.exponentialRampToValueAtTime(0.01, t + 0.08);
+      noise.connect(noiseGain);
+      noiseGain.connect(sfxGain);
+      noise.start(t);
+      noise.stop(t + 0.1);
+    }
+  }
+
+  // Excited high-pitched barks for multi-line clears
+  function playHappyBarks(count) {
+    if (!audioCtx || muted) return;
+    for (let i = 0; i < Math.min(count + 1, 5); i++) {
+      const t = audioCtx.currentTime + i * 0.12;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      const baseFreq = 500 + i * 80 + Math.random() * 100;
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(baseFreq, t);
+      osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.8, t + 0.03);
+      osc.frequency.setValueAtTime(baseFreq * 1.5, t + 0.05);
+      osc.frequency.exponentialRampToValueAtTime(baseFreq, t + 0.1);
+      gain.gain.setValueAtTime(0.3, t);
+      gain.gain.exponentialRampToValueAtTime(0.01, t + 0.15);
+      osc.connect(gain);
+      gain.connect(sfxGain);
+      osc.start(t);
+      osc.stop(t + 0.18);
+    }
+  }
+
+  // Long howl for 4-line DOGTRIS clear
+  function playHowl() {
+    if (!audioCtx || muted) return;
+    const t = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(200, t);
+    osc.frequency.exponentialRampToValueAtTime(800, t + 0.5);
+    osc.frequency.setValueAtTime(750, t + 0.6);
+    osc.frequency.exponentialRampToValueAtTime(400, t + 1.2);
+    gain.gain.setValueAtTime(0.4, t);
+    gain.gain.setValueAtTime(0.4, t + 0.5);
+    gain.gain.exponentialRampToValueAtTime(0.01, t + 1.3);
+    osc.connect(gain);
+    gain.connect(sfxGain);
+    osc.start(t);
+    osc.stop(t + 1.3);
+  }
+
+  // Sad whimper for game over
+  function playWhimper() {
+    if (!audioCtx || muted) return;
+    const t = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(400, t);
+    osc.frequency.exponentialRampToValueAtTime(200, t + 0.3);
+    osc.frequency.exponentialRampToValueAtTime(150, t + 0.6);
+    gain.gain.setValueAtTime(0.3, t);
+    gain.gain.exponentialRampToValueAtTime(0.01, t + 0.7);
+    osc.connect(gain);
+    gain.connect(sfxGain);
+    osc.start(t);
+    osc.stop(t + 0.7);
+    // Second whimper
+    const osc2 = audioCtx.createOscillator();
+    const gain2 = audioCtx.createGain();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(350, t + 0.5);
+    osc2.frequency.exponentialRampToValueAtTime(100, t + 1.0);
+    gain2.gain.setValueAtTime(0, t);
+    gain2.gain.linearRampToValueAtTime(0.25, t + 0.5);
+    gain2.gain.exponentialRampToValueAtTime(0.01, t + 1.1);
+    osc2.connect(gain2);
+    gain2.connect(sfxGain);
+    osc2.start(t);
+    osc2.stop(t + 1.2);
+  }
+
+  function scheduleChipNote(freq, time, dur, waveType, gainNode) {
+    const osc = audioCtx.createOscillator();
+    const env = audioCtx.createGain();
+    osc.type = waveType;
+    osc.frequency.value = freq;
+    env.gain.setValueAtTime(0.3, time);
+    env.gain.setValueAtTime(0.25, time + dur * 0.7);
+    env.gain.exponentialRampToValueAtTime(0.01, time + dur * 0.95);
+    osc.connect(env);
+    env.connect(gainNode);
+    osc.start(time);
+    osc.stop(time + dur);
+  }
+
+  function scheduleMusic() {
+    if (!audioCtx || !musicPlaying) return;
+    const lookAhead = 0.15;
+    // Schedule melody
+    while (nextMelodyTime < audioCtx.currentTime + lookAhead) {
+      const [note, beats] = OREO_MELODY[melodyNoteIndex % OREO_MELODY.length];
+      const dur = beats * BEAT_DUR;
+      if (note !== '-' && NOTE_FREQ[note]) {
+        scheduleChipNote(NOTE_FREQ[note], nextMelodyTime, dur, 'square', musicGain);
+      }
+      nextMelodyTime += dur;
+      melodyNoteIndex++;
+    }
+    // Schedule bass
+    while (nextBassTime < audioCtx.currentTime + lookAhead) {
+      const [note, beats] = OREO_BASS[bassNoteIndex % OREO_BASS.length];
+      const dur = beats * BEAT_DUR;
+      if (note !== '-' && NOTE_FREQ[note]) {
+        scheduleChipNote(NOTE_FREQ[note], nextBassTime, dur, 'triangle', musicGain);
+      }
+      nextBassTime += dur;
+      bassNoteIndex++;
+    }
+  }
+
+  function startMusic() {
+    if (!audioCtx) return;
+    musicPlaying = true;
+    melodyNoteIndex = 0;
+    bassNoteIndex = 0;
+    nextMelodyTime = audioCtx.currentTime + 0.05;
+    nextBassTime = audioCtx.currentTime + 0.05;
+    if (musicSchedulerId) clearInterval(musicSchedulerId);
+    musicSchedulerId = setInterval(scheduleMusic, 25);
+    startLyrics();
+  }
+
+  function stopMusic() {
+    musicPlaying = false;
+    if (musicSchedulerId) { clearInterval(musicSchedulerId); musicSchedulerId = null; }
+    stopLyrics();
+  }
+
+  function pauseMusic() {
+    musicPlaying = false;
+    if (musicSchedulerId) { clearInterval(musicSchedulerId); musicSchedulerId = null; }
+  }
+
+  function resumeMusic() {
+    if (!audioCtx) return;
+    musicPlaying = true;
+    nextMelodyTime = audioCtx.currentTime + 0.05;
+    nextBassTime = audioCtx.currentTime + 0.05;
+    if (musicSchedulerId) clearInterval(musicSchedulerId);
+    musicSchedulerId = setInterval(scheduleMusic, 25);
+  }
+
+  function startLyrics() {
+    const el = document.getElementById('lyrics-text');
+    if (!el) return;
+    currentLyricLine = 0;
+    el.textContent = OREO_LYRICS[0];
+    if (lyricsInterval) clearInterval(lyricsInterval);
+    lyricsInterval = setInterval(() => {
+      currentLyricLine = (currentLyricLine + 1) % OREO_LYRICS.length;
+      el.style.opacity = '0';
+      setTimeout(() => {
+        el.textContent = OREO_LYRICS[currentLyricLine];
+        el.style.opacity = '1';
+      }, 200);
+    }, 2000);
+  }
+
+  function stopLyrics() {
+    if (lyricsInterval) { clearInterval(lyricsInterval); lyricsInterval = null; }
+  }
 
   // --- DOM ---
   const canvas = document.getElementById('game-canvas');
@@ -439,6 +779,10 @@
       level = Math.floor(lines / 10) + 1;
       dropInterval = Math.max(100, 800 - (level - 1) * 60);
       updateStats();
+      // Bark sounds! More lines = more excitement
+      if (cleared >= 4) { playHowl(); playHappyBarks(4); }
+      else if (cleared >= 3) playHappyBarks(cleared);
+      else playBark(cleared);
     }
   }
 
@@ -447,6 +791,8 @@
     nextType = nextFromBag();
     if (!isValid(currentPiece)) {
       gameOver = true;
+      stopMusic();
+      playWhimper();
       showOverlay('Ruh Roh!', 'Your score:', score, 'Play Again');
     }
   }
@@ -623,13 +969,19 @@
 
   // --- Controls ---
   document.addEventListener('keydown', (e) => {
+    if (e.key === 'm' || e.key === 'M') {
+      toggleMute();
+      return;
+    }
     if (!started || gameOver) return;
 
     if (e.key === 'p' || e.key === 'P') {
       paused = !paused;
       if (paused) {
+        pauseMusic();
         showOverlay('Paused', '', undefined, 'Resume');
       } else {
+        resumeMusic();
         hideOverlay();
       }
       return;
@@ -678,8 +1030,10 @@
 
   // --- Start / restart ---
   overlayBtn.addEventListener('click', async () => {
+    initAudio();
     if (paused) {
       paused = false;
+      resumeMusic();
       hideOverlay();
       return;
     }
@@ -698,7 +1052,11 @@
     spawnPiece();
     updateStats();
     lastDrop = performance.now();
+    startMusic();
   });
+
+  // --- Mute button click ---
+  document.getElementById('mute-btn').addEventListener('click', toggleMute);
 
   // --- Init ---
   async function init() {
