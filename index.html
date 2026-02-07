@@ -705,6 +705,7 @@
     dogImages = await loadDogImages();
     loadingScreen.classList.add('hidden');
     gameWrapper.style.display = 'flex';
+    board = createBoard();
     drawBoard();
     drawNext();
     animationId = requestAnimationFrame(gameLoop);
