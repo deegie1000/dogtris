@@ -1,0 +1,35 @@
+<svg width="200" height="220" viewBox="0 0 200 220" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="200" height="220" rx="16" fill="#1a1a2e"/>
+
+  <!-- Dog face -->
+  <ellipse cx="100" cy="100" rx="52" ry="48" fill="#e94560"/>
+  <!-- Floppy ears -->
+  <ellipse cx="52" cy="72" rx="22" ry="36" fill="#c73650" transform="rotate(-15 52 72)"/>
+  <ellipse cx="148" cy="72" rx="22" ry="36" fill="#c73650" transform="rotate(15 148 72)"/>
+  <!-- Inner face -->
+  <ellipse cx="100" cy="104" rx="42" ry="38" fill="#ff6b81"/>
+  <!-- Eyes -->
+  <circle cx="84" cy="90" r="8" fill="#1a1a2e"/>
+  <circle cx="116" cy="90" r="8" fill="#1a1a2e"/>
+  <circle cx="87" cy="87" r="3" fill="#fff"/>
+  <circle cx="119" cy="87" r="3" fill="#fff"/>
+  <!-- Nose -->
+  <ellipse cx="100" cy="110" rx="10" ry="7" fill="#1a1a2e"/>
+  <ellipse cx="100" cy="108" rx="6" ry="3" fill="#444"/>
+  <!-- Mouth -->
+  <path d="M90 117 Q100 130 110 117" stroke="#1a1a2e" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <!-- Tongue -->
+  <ellipse cx="100" cy="129" rx="7" ry="10" fill="#ff4757"/>
+  <ellipse cx="100" cy="127" rx="5" ry="7" fill="#ff6b81"/>
+
+  <!-- Tetris T-block on forehead -->
+  <rect x="80" y="68" width="10" height="10" rx="2" fill="rgba(255,255,255,0.35)"/>
+  <rect x="90" y="68" width="10" height="10" rx="2" fill="rgba(255,255,255,0.25)"/>
+  <rect x="100" y="68" width="10" height="10" rx="2" fill="rgba(255,255,255,0.35)"/>
+  <rect x="90" y="58" width="10" height="10" rx="2" fill="rgba(255,255,255,0.25)"/>
+
+  <!-- Title text -->
+  <text x="100" y="180" text-anchor="middle" font-family="'Segoe UI',Tahoma,sans-serif" font-size="36" font-weight="900" letter-spacing="4" fill="#e94560">DOGTRIS</text>
+  <text x="100" y="200" text-anchor="middle" font-family="'Segoe UI',Tahoma,sans-serif" font-size="11" letter-spacing="5" fill="#888" text-transform="uppercase">STACK THE PUPS</text>
+</svg>
