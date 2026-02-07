@@ -175,7 +175,7 @@ Works in any modern browser that supports HTML5 Canvas:
 ```bash
 # Clone the repo
 git clone <repo-url>
-cd tetris
+cd dogtris
 
 # Option 1: Just open it
 open index.html
