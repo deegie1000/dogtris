@@ -216,6 +216,31 @@
   #mute-btn:hover { background: rgba(15, 52, 96, 1); }
   #mute-btn.muted { text-decoration: line-through; opacity: 0.4; }
 
+  #easter-egg-toast {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(233, 69, 96, 0.95);
+    color: white;
+    padding: 12px 28px;
+    border-radius: 8px;
+    font-size: 20px;
+    font-weight: bold;
+    letter-spacing: 2px;
+    z-index: 200;
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+    text-align: center;
+  }
+  #easter-egg-toast.show { opacity: 1; }
+
+  #board-container.oreo-mode {
+    box-shadow: 0 0 40px rgba(255,255,255,0.25), 0 0 80px rgba(233,69,96,0.3);
+    border-color: #fff;
+  }
+
   .lyrics-panel {
     min-height: 60px;
     display: flex;
@@ -269,6 +294,8 @@
   <div class="loader" style="margin-top:24px;"></div>
   <p>Fetching good boys &amp; girls...</p>
 </div>
+
+<div id="easter-egg-toast"></div>
 
 <div id="game-wrapper" style="display:none;">
   <div class="sidebar">
@@ -670,6 +697,209 @@
     if (lyricsInterval) { clearInterval(lyricsInterval); lyricsInterval = null; }
   }
 
+  // --- Easter Eggs ---
+  let easterEggBuffer = '';
+  let oreoModeActive = false;
+  let oreoImg = null;
+  let treatUsed = false;
+
+  // Oreo's portrait as base64 (placeholder until real photo is embedded)
+  const OREO_IMG_SRC = 'OREO_PLACEHOLDER';
+
+  // Pre-load Oreo image
+  (function() {
+    if (OREO_IMG_SRC === 'OREO_PLACEHOLDER') {
+      // Fallback: create SVG cartoon of Oreo
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 280">
+        <ellipse cx="100" cy="200" rx="60" ry="65" fill="#f0ebe0"/>
+        <ellipse cx="130" cy="180" rx="30" ry="22" fill="#3d3d3d" transform="rotate(-10 130 180)"/>
+        <ellipse cx="75" cy="215" rx="18" ry="14" fill="#4a4a4a" transform="rotate(10 75 215)"/>
+        <circle cx="52" cy="190" r="18" fill="#f0ebe0"/>
+        <circle cx="148" cy="190" r="18" fill="#f0ebe0"/>
+        <ellipse cx="75" cy="258" rx="16" ry="10" fill="#f0ebe0"/>
+        <ellipse cx="125" cy="258" rx="16" ry="10" fill="#f0ebe0"/>
+        <ellipse cx="100" cy="105" rx="52" ry="48" fill="#3d3d3d"/>
+        <circle cx="60" cy="82" r="20" fill="#353535"/>
+        <circle cx="140" cy="82" r="20" fill="#353535"/>
+        <circle cx="100" cy="68" r="18" fill="#3d3d3d"/>
+        <ellipse cx="50" cy="90" rx="22" ry="35" fill="#2d2d2d" transform="rotate(-18 50 90)"/>
+        <ellipse cx="150" cy="90" rx="22" ry="35" fill="#2d2d2d" transform="rotate(18 150 90)"/>
+        <ellipse cx="100" cy="120" rx="28" ry="24" fill="#f0ebe0"/>
+        <ellipse cx="100" cy="98" rx="8" ry="14" fill="#e0d8c8"/>
+        <circle cx="82" cy="100" r="9" fill="#1a1a1a"/>
+        <circle cx="118" cy="100" r="9" fill="#1a1a1a"/>
+        <circle cx="85" cy="97" r="3.5" fill="white"/>
+        <circle cx="121" cy="97" r="3.5" fill="white"/>
+        <path d="M72 90 Q80 86 90 90" stroke="#2d2d2d" stroke-width="2" fill="none"/>
+        <path d="M110 90 Q120 86 128 90" stroke="#2d2d2d" stroke-width="2" fill="none"/>
+        <ellipse cx="100" cy="116" rx="7" ry="5.5" fill="#1a1a1a"/>
+        <ellipse cx="100" cy="115" rx="4" ry="2" fill="#333"/>
+        <path d="M93 122 Q100 130 107 122" stroke="#1a1a1a" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+        <ellipse cx="100" cy="128" rx="4" ry="6" fill="#ff6b81"/>
+        <ellipse cx="100" cy="127" rx="2.5" ry="3.5" fill="#ff8fa0"/>
+        <path d="M160 195 Q185 165 175 135 Q170 125 162 130" stroke="#f0ebe0" stroke-width="14" fill="none" stroke-linecap="round"/>
+        <path d="M163 133 Q160 128 158 133" stroke="#3d3d3d" stroke-width="7" fill="none" stroke-linecap="round"/>
+      </svg>`;
+      const blob = new Blob([svg], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      img.onload = () => { oreoImg = img; URL.revokeObjectURL(url); };
+      img.src = url;
+    } else {
+      const img = new Image();
+      img.onload = () => { oreoImg = img; };
+      img.src = OREO_IMG_SRC;
+    }
+  })();
+
+  function showEasterEggToast(msg) {
+    const toast = document.getElementById('easter-egg-toast');
+    if (!toast) return;
+    toast.textContent = msg;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2000);
+  }
+
+  function playSecretSound(key) {
+    if (!audioCtx) initAudio();
+    if (muted) return;
+    const t = audioCtx.currentTime;
+    switch (key) {
+      case '1': { // Deep WOOF
+        const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.type = 'sawtooth';
+        o.frequency.setValueAtTime(150, t);
+        o.frequency.exponentialRampToValueAtTime(300, t + 0.05);
+        o.frequency.exponentialRampToValueAtTime(100, t + 0.25);
+        g.gain.setValueAtTime(0.5, t);
+        g.gain.exponentialRampToValueAtTime(0.01, t + 0.3);
+        o.connect(g); g.connect(sfxGain);
+        o.start(t); o.stop(t + 0.35);
+        break;
+      }
+      case '2': { // Standard bark
+        playBark(1);
+        break;
+      }
+      case '3': { // Yip!
+        const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.type = 'square';
+        o.frequency.setValueAtTime(800, t);
+        o.frequency.exponentialRampToValueAtTime(1200, t + 0.02);
+        o.frequency.exponentialRampToValueAtTime(600, t + 0.08);
+        g.gain.setValueAtTime(0.3, t);
+        g.gain.exponentialRampToValueAtTime(0.01, t + 0.1);
+        o.connect(g); g.connect(sfxGain);
+        o.start(t); o.stop(t + 0.12);
+        break;
+      }
+      case '4': { // Mini howl
+        const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.type = 'sine';
+        o.frequency.setValueAtTime(300, t);
+        o.frequency.exponentialRampToValueAtTime(700, t + 0.3);
+        o.frequency.exponentialRampToValueAtTime(500, t + 0.6);
+        g.gain.setValueAtTime(0.35, t);
+        g.gain.exponentialRampToValueAtTime(0.01, t + 0.7);
+        o.connect(g); g.connect(sfxGain);
+        o.start(t); o.stop(t + 0.7);
+        break;
+      }
+      case '5': { // Growl
+        const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.type = 'sawtooth';
+        o.frequency.setValueAtTime(80, t);
+        o.frequency.linearRampToValueAtTime(100, t + 0.3);
+        o.frequency.linearRampToValueAtTime(70, t + 0.6);
+        g.gain.setValueAtTime(0.3, t);
+        g.gain.setValueAtTime(0.3, t + 0.4);
+        g.gain.exponentialRampToValueAtTime(0.01, t + 0.7);
+        o.connect(g); g.connect(sfxGain);
+        o.start(t); o.stop(t + 0.7);
+        const bSz = audioCtx.sampleRate * 0.5;
+        const buf = audioCtx.createBuffer(1, bSz, audioCtx.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < bSz; i++) d[i] = (Math.random() * 2 - 1) * 0.15;
+        const n = audioCtx.createBufferSource(); n.buffer = buf;
+        const ng = audioCtx.createGain();
+        ng.gain.setValueAtTime(0.15, t);
+        ng.gain.exponentialRampToValueAtTime(0.01, t + 0.6);
+        n.connect(ng); ng.connect(sfxGain);
+        n.start(t); n.stop(t + 0.6);
+        break;
+      }
+      case '6': { // Whine
+        const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.type = 'sine';
+        o.frequency.setValueAtTime(600, t);
+        o.frequency.exponentialRampToValueAtTime(300, t + 0.5);
+        o.frequency.exponentialRampToValueAtTime(200, t + 0.8);
+        g.gain.setValueAtTime(0.25, t);
+        g.gain.exponentialRampToValueAtTime(0.01, t + 0.9);
+        o.connect(g); g.connect(sfxGain);
+        o.start(t); o.stop(t + 0.9);
+        break;
+      }
+      case '7': { // Arf arf! (double bark)
+        playBark(2);
+        break;
+      }
+    }
+  }
+
+  function checkEasterEgg(key) {
+    easterEggBuffer += key.toUpperCase();
+    if (easterEggBuffer.length > 20) easterEggBuffer = easterEggBuffer.slice(-20);
+
+    if (easterEggBuffer.endsWith('OREO')) {
+      activateOreoMode();
+      easterEggBuffer = '';
+      return true;
+    }
+    if (easterEggBuffer.endsWith('WOOF')) {
+      if (!audioCtx) initAudio();
+      for (let i = 0; i < 5; i++) setTimeout(() => playBark(1), i * 200);
+      showEasterEggToast('WOOF WOOF WOOF!');
+      easterEggBuffer = '';
+      return true;
+    }
+    if (easterEggBuffer.endsWith('TREAT')) {
+      if (!treatUsed && started && !gameOver) {
+        treatUsed = true;
+        score += 1000;
+        updateStats();
+        if (!audioCtx) initAudio();
+        playHappyBarks(4);
+        showEasterEggToast('TREAT! +1000 pts!');
+      } else if (treatUsed) {
+        showEasterEggToast('No more treats!');
+        if (audioCtx) playBark(1);
+      }
+      easterEggBuffer = '';
+      return true;
+    }
+    return false;
+  }
+
+  function activateOreoMode() {
+    oreoModeActive = !oreoModeActive;
+    const bc = document.getElementById('board-container');
+    if (oreoModeActive) {
+      if (!audioCtx) initAudio();
+      playHowl();
+      setTimeout(() => playHappyBarks(5), 500);
+      bc.classList.add('oreo-mode');
+      showEasterEggToast('OREO MODE!');
+      const el = document.getElementById('lyrics-text');
+      if (el) { el.style.opacity = '0'; setTimeout(() => { el.textContent = 'Good boy Oreo!'; el.style.opacity = '1'; }, 200); }
+    } else {
+      bc.classList.remove('oreo-mode');
+      showEasterEggToast('Oreo mode off');
+      const el = document.getElementById('lyrics-text');
+      if (el) { el.style.opacity = '0'; setTimeout(() => { el.textContent = '~ Oreo\'s Theme ~'; el.style.opacity = '1'; }, 200); }
+    }
+  }
+
   // --- DOM ---
   const canvas = document.getElementById('game-canvas');
   const ctx = canvas.getContext('2d');
@@ -828,6 +1058,19 @@
     ctx.fillStyle = '#16213e';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+    // Oreo mode: draw Oreo as a watermark background
+    if (oreoModeActive && oreoImg) {
+      ctx.save();
+      ctx.globalAlpha = 0.18;
+      const scale = Math.min(canvas.width / oreoImg.width, canvas.height / oreoImg.height) * 0.85;
+      const w = oreoImg.width * scale;
+      const h = oreoImg.height * scale;
+      const ox = (canvas.width - w) / 2;
+      const oy = (canvas.height - h) / 2;
+      ctx.drawImage(oreoImg, ox, oy, w, h);
+      ctx.restore();
+    }
+
     // Grid lines
     ctx.strokeStyle = 'rgba(255,255,255,0.04)';
     ctx.lineWidth = 1;
@@ -969,6 +1212,17 @@
 
   // --- Controls ---
   document.addEventListener('keydown', (e) => {
+    // Easter egg: secret bark sounds on number keys 1-7
+    if (e.key >= '1' && e.key <= '7') {
+      playSecretSound(e.key);
+      return;
+    }
+
+    // Easter egg: sequence detection (feed all letter presses)
+    if (e.key.length === 1 && /[a-zA-Z]/.test(e.key)) {
+      checkEasterEgg(e.key);
+    }
+
     if (e.key === 'm' || e.key === 'M') {
       toggleMute();
       return;
@@ -1045,6 +1299,7 @@
 
     board = createBoard();
     bag = [];
+    treatUsed = false;
     score = 0; lines = 0; level = 1;
     dropInterval = 800;
     gameOver = false; paused = false; started = true;
